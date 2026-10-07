@@ -76,61 +76,79 @@ omniroute-api-wa/
 
 ## ⚙️ Variabel Lingkungan (.env)
 
-| Variabel | Tipe | Default | Deskripsi |
-|---|---|---|---|
-| `PORT` | String | `8080` | Port HTTP Gin server |
-| `GIN_MODE` | String | `release` | Mode Gin (`debug`, `release`) |
-| `DB_HOST` | String | `localhost` | Host PostgreSQL |
-| `DB_PORT` | String | `5432` | Port PostgreSQL |
-| `DB_USER` | String | `postgres` | Username database |
-| `DB_PASSWORD` | String | `postgres` | Password database |
-| `DB_NAME` | String | `omniroute_wa` | Nama database |
-| `DB_SSLMODE` | String | `disable` | SSL mode PostgreSQL |
-| `OMNIROUTE_API_BASE_URL` | String | `http://localhost:8000/v1` | Endpoint base Omniroute AI |
-| `OMNIROUTE_API_KEY` | String | `-` | API Key autentikasi Omniroute |
-| `OMNIROUTE_MODEL` | String | `omniroute-default` | Nama model AI yang digunakan |
-| `MAX_CONTEXT_MESSAGES` | Integer | `10` | Jumlah pesan riwayat terakhir sebagai konteks AI |
-| `WHATSAPP_SESSION_STORE` | String | `postgres` | Media simpan sesi (`postgres` atau `sqlite`) |
-| `WHATSAPP_SQLITE_PATH` | String | `whatsapp_session.db` | File path jika memilih SQLite |
-| `WORKER_POOL_SIZE` | Integer | `5` | Jumlah worker goroutine pemrosesan AI |
-| `WORKER_QUEUE_SIZE` | Integer | `100` | Kapasitas antrean buffered channel |
+> **Catatan:** Salin `.env.example` menjadi `.env` lalu isi nilai yang sesuai. File `.env` **tidak boleh** di-commit ke repositori (sudah terdaftar di `.gitignore`).
+
+| Variabel | Tipe | Default | Wajib | Deskripsi |
+|---|---|---|:---:|---|
+| `APP_PORT` | String | `8080` | | Port HTTP Gin server. Menggunakan `APP_PORT` (bukan `PORT`) agar tidak bentrok dengan port default Omniroute CLI (`20128`) |
+| `GIN_MODE` | String | `release` | | Mode Gin: `debug` atau `release` |
+| `DB_HOST` | String | — | ✅ | Host server PostgreSQL |
+| `DB_PORT` | String | — | ✅ | Port server PostgreSQL (biasanya `5432`) |
+| `DB_USER` | String | — | ✅ | Username database PostgreSQL |
+| `DB_PASSWORD` | String | — | ✅ | Password database PostgreSQL |
+| `DB_NAME` | String | — | ✅ | Nama database PostgreSQL |
+| `DB_SSLMODE` | String | `disable` | | SSL mode koneksi PostgreSQL (`disable`, `require`, `verify-full`) |
+| `OMNIROUTE_API_BASE_URL` | String | — | ✅ | Endpoint base Omniroute AI. Port default Omniroute CLI: `http://localhost:20128/v1` |
+| `OMNIROUTE_API_KEY` | String | — | | API Key autentikasi Omniroute (opsional jika tidak dikonfigurasi di server) |
+| `OMNIROUTE_MODEL` | String | `auto` | | Nama model AI yang digunakan (`auto` untuk pemilihan otomatis) |
+| `MAX_CONTEXT_MESSAGES` | Integer | `10` | | Jumlah pesan riwayat terakhir yang dikirim sebagai konteks ke AI |
+| `WHATSAPP_SESSION_STORE` | String | `postgres` | | Media penyimpanan sesi WhatsApp: `postgres` atau `sqlite` |
+| `WHATSAPP_SQLITE_PATH` | String | `whatsapp_session.db` | | Path file SQLite (hanya berlaku jika `WHATSAPP_SESSION_STORE=sqlite`) |
+| `WORKER_POOL_SIZE` | Integer | `5` | | Jumlah goroutine worker pemrosesan pesan AI secara paralel |
+| `WORKER_QUEUE_SIZE` | Integer | `100` | | Kapasitas antrean buffered channel untuk pesan masuk |
 
 ---
 
 ## 🚀 Panduan Menjalankan
 
-### 1. Menjalankan Database PostgreSQL via Docker Compose
+### Prasyarat
+
+- [Go](https://go.dev/dl/) 1.21+
+- [Docker](https://www.docker.com/) & Docker Compose (untuk menjalankan PostgreSQL)
+- Omniroute CLI berjalan di mesin lokal (default port `20128`)
+
+### 1. Konfigurasi Environment
 
 ```bash
-# Salin konfigurasi environment
+# Salin template konfigurasi
 cp .env.example .env
 
-# Jalankan container PostgreSQL
-docker compose up -d postgres
+# Edit .env dan isi nilai yang sesuai (DB_PASSWORD, OMNIROUTE_API_KEY, dll.)
 ```
 
-### 2. Menjalankan Aplikasi Golang
+### 2. Menjalankan Database PostgreSQL via Docker Compose
 
 ```bash
-# Unduh dependensi (jika diperlukan)
+# Jalankan container PostgreSQL saja
+docker compose up -d postgres
+
+# Atau jalankan seluruh stack (PostgreSQL + App) sekaligus
+docker compose up -d
+```
+
+> **Catatan:** Saat menjalankan `app` via Docker, `DB_HOST` otomatis di-set ke `postgres` (nama service dalam jaringan Docker). Pastikan `OMNIROUTE_API_BASE_URL` mengarah ke `http://host.docker.internal:20128/v1` agar container bisa mengakses Omniroute CLI di host.
+
+### 3. Menjalankan Aplikasi Golang (Lokal)
+
+```bash
+# Unduh dependensi
 go mod download
 
-# Jalankan service secara lokal
+# Jalankan service
 go run ./cmd/api/main.go
 ```
 
-### 3. Autentikasi / Pairing WhatsApp
+### 4. Autentikasi / Pairing WhatsApp
 
-1. Saat service pertama kali berjalan, kode QR akan dicetak di terminal console.
-2. Anda juga dapat membuka browser di:
+1. Saat service pertama kali berjalan, kode QR dicetak otomatis di terminal.
+2. Buka browser dan akses:
    ```
    http://localhost:8080/qr
    ```
-3. Buka WhatsApp di smartphone Anda:
-   - Pilih menu **Titik Tiga / Pengaturan** > **Perangkat Tertaut (Linked Devices)**.
-   - Ketuk **Tautkan Perangkat (Link a Device)**.
-   - Pindai kode QR yang tampil di browser atau terminal.
-4. Setelah berhasil, halaman web akan otomatis memperbarui status menjadi **WhatsApp Terhubung**.
+3. Pindai QR Code dari WhatsApp di smartphone Anda:
+   - Buka **Pengaturan / Titik Tiga** → **Perangkat Tertaut** → **Tautkan Perangkat**.
+   - Arahkan kamera ke kode QR yang tampil di browser atau terminal.
+4. Setelah berhasil, halaman web otomatis memperbarui status menjadi **WhatsApp Terhubung** dan Anda akan diarahkan ke `/status`.
 
 ---
 
