@@ -1,0 +1,23 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test and coverage artifacts
+*.test
+*.out
+
+# Environment variables & sessions
+.env
+*.db
+*.db-journal
+whatsapp_session.db
+
+# IDE and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

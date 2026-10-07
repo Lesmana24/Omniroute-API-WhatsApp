@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: omniroute_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-omniroute_wa}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-omniroute_wa}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - omniroute-net
+
+  # Optional service container for production containerized deployment
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: omniroute_wa_service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      PORT: "8080"
+      GIN_MODE: "release"
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_USER: "${DB_USER:-postgres}"
+      DB_PASSWORD: "${DB_PASSWORD:-postgres}"
+      DB_NAME: "${DB_NAME:-omniroute_wa}"
+      DB_SSLMODE: "disable"
+      OMNIROUTE_API_BASE_URL: "${OMNIROUTE_API_BASE_URL:-http://host.docker.internal:8000/v1}"
+      OMNIROUTE_API_KEY: "${OMNIROUTE_API_KEY:-}"
+      OMNIROUTE_MODEL: "${OMNIROUTE_MODEL:-omniroute-default}"
+      MAX_CONTEXT_MESSAGES: "${MAX_CONTEXT_MESSAGES:-10}"
+      WHATSAPP_SESSION_STORE: "postgres"
+      WORKER_POOL_SIZE: "5"
+      WORKER_QUEUE_SIZE: "100"
+    networks:
+      - omniroute-net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  omniroute-net:
+    driver: bridge
