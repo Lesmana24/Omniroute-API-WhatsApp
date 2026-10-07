@@ -36,6 +36,11 @@ func TestFormatWhatsAppText(t *testing.T) {
 			input:    "ini __miring__",
 			expected: "ini _miring_",
 		},
+		{
+			name:     "Italic __ in middle",
+			input:    "hello __world__ test",
+			expected: "hello _world_ test",
+		},
 	}
 
 	for _, tt := range tests {

@@ -22,7 +22,7 @@ func FormatWhatsAppText(text string) string {
 
 	// 3. Italic: __text__ -> _text_
 	reItalic := regexp.MustCompile(`__(.*?)__`)
-	text = reItalic.ReplaceAllString(text, "_$1_")
+	text = reItalic.ReplaceAllString(text, "_${1}_")
 
 	// 4. Strikethrough: ~~text~~ -> ~text~
 	reStrike := regexp.MustCompile(`~~(.*?)~~`)

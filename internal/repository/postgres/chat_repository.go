@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"omniroute-api-wa/internal"
 	"omniroute-api-wa/internal/config"
 	"omniroute-api-wa/internal/domain"
 )
@@ -105,7 +106,7 @@ func (r *chatRepository) Save(ctx context.Context, msg *domain.ChatMessage) erro
 // ordered chronologically ascending so that AI conversation flow remains natural.
 func (r *chatRepository) GetRecentContext(ctx context.Context, phoneNumber string, limit int) ([]domain.ChatMessage, error) {
 	if limit <= 0 {
-		limit = 10
+		limit = internal.DefaultMaxContextMessages
 	}
 
 	query := `
@@ -122,7 +123,7 @@ func (r *chatRepository) GetRecentContext(ctx context.Context, phoneNumber strin
 
 	rows, err := r.pool.Query(ctx, query, phoneNumber, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query chat context: %w", err)
+		return nil, fmt.Errorf("failed to query chat context for phone %s: %w", phoneNumber, err)
 	}
 	defer rows.Close()
 

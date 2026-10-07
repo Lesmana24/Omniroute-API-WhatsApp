@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Terhubung - Omniroute AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 36px 32px;
+            max-width: 440px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+        }
+        .badge-success {
+            display: inline-block;
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+            border: 1px solid #22c55e;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+        h1 { font-size: 24px; margin: 0 0 10px; color: #f8fafc; }
+        p { color: #94a3b8; font-size: 14px; line-height: 1.6; margin: 0 0 24px; }
+        .info-box {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 16px;
+            text-align: left;
+            margin-bottom: 24px;
+            font-size: 13px;
+        }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .info-row:last-child { margin-bottom: 0; }
+        .info-label { color: #64748b; }
+        .info-value { color: #f1f5f9; font-family: monospace; font-weight: bold; }
+        .btn {
+            display: inline-block;
+            background: #2563eb;
+            color: #ffffff;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #1d4ed8; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="badge-success">&#10003; WhatsApp Terhubung</div>
+        <h1>Perangkat Aktif</h1>
+        <p>Sesi WhatsApp Anda telah terotentikasi dan siap memproses pesan secara otomatis dengan Omniroute AI.</p>
+        <div class="info-box">
+            <div class="info-row">
+                <span class="info-label">Nomor WhatsApp:</span>
+                <span class="info-value">+%s</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Nama Push:</span>
+                <span class="info-value">%s</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">JID Akun:</span>
+                <span class="info-value">%s</span>
+            </div>
+        </div>
+        <a href="/status" class="btn">Lihat Status API</a>
+    </div>
+</body>
+</html>

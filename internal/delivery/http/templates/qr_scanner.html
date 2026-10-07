@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tautkan WhatsApp - Omniroute AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+        }
+        .badge {
+            display: inline-block;
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            padding: 5px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        h1 { font-size: 22px; margin: 0 0 8px; color: #f8fafc; }
+        p { color: #94a3b8; font-size: 13px; line-height: 1.5; margin: 0 0 20px; }
+        .qr-wrapper {
+            background: #ffffff;
+            padding: 16px;
+            border-radius: 12px;
+            display: inline-block;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        }
+        .qr-wrapper img {
+            display: block;
+            width: 250px;
+            height: 250px;
+        }
+        .instructions {
+            text-align: left;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 16px;
+            font-size: 13px;
+            color: #cbd5e1;
+            margin-bottom: 18px;
+        }
+        .instructions ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin-bottom: 6px;
+        }
+        .instructions li:last-child {
+            margin-bottom: 0;
+        }
+        .countdown {
+            font-size: 12px;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="badge">Autentikasi WhatsApp</div>
+        <h1>Pindai Kode QR</h1>
+        <p>Buka WhatsApp pada smartphone Anda untuk menautkan perangkat ini.</p>
+        
+        <div class="qr-wrapper">
+            <img src="data:image/png;base64,%s" alt="WhatsApp QR Code" />
+        </div>
+        
+        <div class="instructions">
+            <ol>
+                <li>Buka aplikasi WhatsApp di HP Anda</li>
+                <li>Buka <strong>Pengaturan / Titik Tiga</strong> &gt; <strong>Perangkat Tertaut</strong></li>
+                <li>Ketuk <strong>Tautkan Perangkat</strong></li>
+                <li>Arahkan kamera ke kode QR di atas</li>
+            </ol>
+        </div>
+        
+        <div class="countdown" id="timer">Memeriksa status secara berkala...</div>
+    </div>
+    
+    <script>
+        // Check pairing status every 3 seconds
+        setInterval(async () => {
+            try {
+                const res = await fetch('/status');
+                const data = await res.json();
+                if (data.whatsapp && data.whatsapp.is_logged_in) {
+                    window.location.reload();
+                }
+            } catch (e) {
+                // Ignore transient network errors
+            }
+        }, 3000);
+        
+        // Auto reload page every 25 seconds to grab refreshed QR if unlinked
+        setTimeout(() => {
+            window.location.reload();
+        }, 25000);
+    </script>
+</body>
+</html>

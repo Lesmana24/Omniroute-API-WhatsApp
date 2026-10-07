@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+
+	"omniroute-api-wa/internal"
 )
 
 // Config represents all application configuration parameters.
@@ -58,11 +60,11 @@ func Load() (*Config, error) {
 		OmnirouteAPIBaseURL:  strings.TrimRight(getEnv("OMNIROUTE_API_BASE_URL", ""), "/"),
 		OmnirouteAPIKey:      getEnv("OMNIROUTE_API_KEY", ""),
 		OmnirouteModel:       getEnv("OMNIROUTE_MODEL", "auto"),
-		MaxContextMessages:   getEnvAsInt("MAX_CONTEXT_MESSAGES", 10),
+		MaxContextMessages:   getEnvAsInt("MAX_CONTEXT_MESSAGES", internal.DefaultMaxContextMessages),
 		WhatsAppSessionStore: strings.ToLower(getEnv("WHATSAPP_SESSION_STORE", "postgres")),
 		WhatsAppSQLitePath:   getEnv("WHATSAPP_SQLITE_PATH", "whatsapp_session.db"),
-		WorkerPoolSize:       getEnvAsInt("WORKER_POOL_SIZE", 5),
-		WorkerQueueSize:      getEnvAsInt("WORKER_QUEUE_SIZE", 100),
+		WorkerPoolSize:       getEnvAsInt("WORKER_POOL_SIZE", internal.DefaultWorkerPoolSize),
+		WorkerQueueSize:      getEnvAsInt("WORKER_QUEUE_SIZE", internal.DefaultWorkerQueueSize),
 	}
 
 	return cfg, cfg.Validate()
@@ -109,13 +111,13 @@ func (c *Config) Validate() error {
 	}
 
 	if c.MaxContextMessages <= 0 {
-		c.MaxContextMessages = 10
+		c.MaxContextMessages = internal.DefaultMaxContextMessages
 	}
 	if c.WorkerPoolSize <= 0 {
-		c.WorkerPoolSize = 5
+		c.WorkerPoolSize = internal.DefaultWorkerPoolSize
 	}
 	if c.WorkerQueueSize <= 0 {
-		c.WorkerQueueSize = 100
+		c.WorkerQueueSize = internal.DefaultWorkerQueueSize
 	}
 
 	return nil
