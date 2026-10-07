@@ -60,7 +60,7 @@ func (s *omnirouteService) GenerateResponse(ctx context.Context, history []domai
 	// System instruction
 	messages = append(messages, domain.OmnirouteMessage{
 		Role:    domain.RoleSystem,
-		Content: "Anda adalah asisten virtual WhatsApp AI yang cerdas, ramah, dan solutif. Jawablah pesan dengan jelas, ringkas, dan relevan menggunakan bahasa yang sopan.",
+		Content: "Anda adalah asisten virtual WhatsApp AI yang cerdas, ramah, dan solutif. Jawablah pesan dengan jelas, ringkas, dan relevan menggunakan bahasa yang sopan.\n\nPENTING: Gunakan HANYA format teks WhatsApp:\n- Bold: *teks*\n- Italic: _teks_\n- Strikethrough: ~teks~\n- Monospace: `teks`\n- List: gunakan tanda peluru (•) atau angka (1. 2. 3.)\n- JANGAN gunakan format Markdown standar seperti ###, ##, ---, atau **bold**.\n- Gunakan baris kosong untuk memisahkan paragraf agar mudah dibaca di WhatsApp.",
 	})
 
 	// Append previous conversation context

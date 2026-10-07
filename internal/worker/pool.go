@@ -11,6 +11,7 @@ import (
 	"omniroute-api-wa/internal/domain"
 	"omniroute-api-wa/internal/repository/postgres"
 	"omniroute-api-wa/internal/service"
+	"omniroute-api-wa/pkg/textutil"
 )
 
 // WorkerPool manages asynchronous concurrent handling of inbound WhatsApp messages.
@@ -169,7 +170,7 @@ func (p *workerPool) processJob(workerID int, job domain.InboundMessageJob) {
 	}
 
 	// Step d & e: Send prompt and context to Omniroute AI API
-	aiReply, err := p.omnirouteSvc.GenerateResponse(ctx, historyContext, job.Content)
+	aiReplyRaw, err := p.omnirouteSvc.GenerateResponse(ctx, historyContext, job.Content)
 	if err != nil {
 		p.logger.Error("Failed to generate AI response from Omniroute",
 			"sender", job.PhoneNumber,
@@ -180,6 +181,9 @@ func (p *workerPool) processJob(workerID int, job domain.InboundMessageJob) {
 		_ = p.gowaSvc.SendMessage(ctx, job.SenderJID, errorMessage)
 		return
 	}
+
+	// Apply WhatsApp formatting
+	aiReply := textutil.FormatWhatsAppText(aiReplyRaw)
 
 	// Step f & g: Save AI assistant reply to PostgreSQL
 	aiMsg := &domain.ChatMessage{

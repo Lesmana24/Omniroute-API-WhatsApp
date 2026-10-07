@@ -5,6 +5,49 @@ import (
 	"testing"
 )
 
+func TestFormatWhatsAppText(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Bold markdown",
+			input:    "ini **tebal** bang",
+			expected: "ini *tebal* bang",
+		},
+		{
+			name:     "Headers",
+			input:    "### Judul\nini konten",
+			expected: "*Judul*\nini konten",
+		},
+		{
+			name:     "List items",
+			input:    "- item 1\n- item 2",
+			expected: "• item 1\n• item 2",
+		},
+		{
+			name:     "Horizontal rules",
+			input:    "konten\n---\nlebih banyak konten",
+			expected: "konten\n\nlebih banyak konten",
+		},
+		{
+			name:     "Italic __",
+			input:    "ini __miring__",
+			expected: "ini _miring_",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatWhatsAppText(tt.input)
+			if got != tt.expected {
+				t.Errorf("FormatWhatsAppText() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestChunkTextShort(t *testing.T) {
 	text := "Halo, ini pesan singkat."
 	chunks := ChunkText(text, 100)
