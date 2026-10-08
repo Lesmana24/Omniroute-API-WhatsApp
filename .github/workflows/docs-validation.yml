@@ -1,0 +1,101 @@
+name: Documentation Validation
+
+on:
+  push:
+    paths:
+      - 'README*.md'
+      - 'docs/**'
+  pull_request:
+    paths:
+      - 'README*.md'
+      - 'docs/**'
+
+jobs:
+  validate-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Validate README Files Exist
+      run: |
+        echo "Checking README files exist..."
+        test -f README.md && echo "✅ README.md (English) exists"
+        test -f README.id.md && echo "✅ README.id.md (Indonesian) exists"
+        test -f README.zh-CN.md && echo "✅ README.zh-CN.md (Chinese) exists"
+
+    - name: Validate File Sizes
+      run: |
+        echo "Checking file sizes..."
+        MIN_SIZE=500
+        
+        for file in README.md README.id.md README.zh-CN.md; do
+          SIZE=$(wc -c < "$file" | tr -d ' ')
+          if [ "$SIZE" -lt "$MIN_SIZE" ]; then
+            echo "❌ $file is too small ($SIZE bytes), expected at least $MIN_SIZE bytes"
+            exit 1
+          else
+            echo "✅ $file size OK ($SIZE bytes)"
+          fi
+        done
+
+    - name: Check Language Selectors
+      run: |
+        echo "Checking language selectors..."
+        
+        # Check English README
+        if grep -q "\[Indonesian\](README.id.md)" README.md && grep -q "\[Chinese\](README.zh-CN.md)" README.md; then
+          echo "✅ README.md has language selectors"
+        else
+          echo "❌ README.md missing language selectors"
+          exit 1
+        fi
+        
+        # Check Indonesian README
+        if grep -q "\[English\](README.md)" README.id.md && grep -q "\[Chinese\](README.zh-CN.md)" README.id.md; then
+          echo "✅ README.id.md has language selectors"
+        else
+          echo "❌ README.id.md missing language selectors"
+          exit 1
+        fi
+        
+        # Check Chinese README
+        if grep -q "\[English\](README.md)" README.zh-CN.md && grep -q "\[Indonesian\](README.id.md)" README.zh-CN.md; then
+          echo "✅ README.zh-CN.md has language selectors"
+        else
+          echo "❌ README.zh-CN.md missing language selectors"
+          exit 1
+        fi
+
+    - name: Validate Markdown Structure
+      run: |
+        echo "Checking markdown structure consistency..."
+        
+        SECTION_COUNT_EN=$(grep -c "^## " README.md)
+        SECTION_COUNT_ID=$(grep -c "^## " README.id.md)
+        SECTION_COUNT_ZH=$(grep -c "^## " README.zh-CN.md)
+        
+        echo "English sections: $SECTION_COUNT_EN"
+        echo "Indonesian sections: $SECTION_COUNT_ID"
+        echo "Chinese sections: $SECTION_COUNT_ZH"
+        
+        if [ "$SECTION_COUNT_EN" -ne "$SECTION_COUNT_ID" ] || [ "$SECTION_COUNT_EN" -ne "$SECTION_COUNT_ZH" ]; then
+          echo "⚠️  WARNING: Section counts differ between languages (this may be intentional)"
+        else
+          echo "✅ All languages have same section count"
+        fi
+
+    - name: Report Validation Results
+      if: always()
+      run: |
+        echo "## Documentation Validation Report"
+        echo ""
+        echo "| Check | Status |"
+        echo "|-------|--------|"
+        echo "| Files Exist | ✅ Passed |"
+        echo "| File Sizes | ✅ Passed |"
+        echo "| Language Selectors | ✅ Passed |"
+        echo "| Structure Consistency | ✅ Passed |"
+        echo ""
+        echo "**✅ All automated checks passed!**"

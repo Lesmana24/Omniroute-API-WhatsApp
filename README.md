@@ -1,56 +1,60 @@
 # Omniroute WhatsApp Integration Service (GoWA / whatsmeow)
 
-Layanan integrasi WhatsApp mandiri berbasis **Golang** menggunakan pustaka [whatsmeow](https://github.com/tulir/whatsmeow), terhubung ke **Omniroute AI API** dengan penyimpanan konteks riwayat percakapan otomatis pada database **PostgreSQL**.
-
-Dibangun dengan arsitektur modular (*Clean Architecture / Standard Go Project Layout*), framework **Gin**, connection pool **pgxpool**, serta *Worker Pool* asinkron untuk menjamin responsivitas tinggi dan kehandalan di lingkungan produksi.
+[Indonesian](README.id.md) | [Chinese](README.zh-CN.md)
 
 ---
 
-## 🌟 Fitur Utama
+Self-hosted WhatsApp integration service built with **Golang** using the [whatsmeow](https://github.com/tulir/whatsmeow) library, connected to the **Omniroute AI API** with automatic conversation history context storage in **PostgreSQL** database.
 
-1. **Persistensi Sesi WhatsApp**:
-   - Sesi terdaftar disimpan langsung di tabel internal PostgreSQL (`sqlstore`) atau file SQLite lokal.
-   - Sesi tidak terputus saat aplikasi di-restart (*persistent login*).
+Built with modular architecture (*Clean Architecture / Standard Go Project Layout*), **Gin** framework, **pgxpool** connection pool, and asynchronous *Worker Pool* to ensure high responsiveness and reliability in production environments.
 
-2. **Dua Mode Tampilan QR Code**:
-   - **Terminal Console**: Dicetak otomatis saat startup menggunakan representasi half-block UTF-8.
-   - **Browser Web (`GET /qr`)**: Halaman dashboard HTML modern yang menampilkan gambar QR Code secara dinamis (base64 PNG) lengkap dengan *auto-refresh* dan polling status pairing secara otomatis. Tersedia juga endpoint gambar langsung di `GET /qr/image`.
+---
 
-3. **Manajemen Konteks Obrolan di PostgreSQL**:
-   - Tabel `chat_histories` menyimpan riwayat percakapan (`user` & `assistant`).
-   - Query mengambil `N` riwayat pesan terakhir dan mengurutkannya secara kronologis ascending untuk dimasukkan ke dalam prompt konteks AI.
-   - Dilengkapi *composite index* `(phone_number, created_at DESC, id DESC)` untuk performa query sub-milidetik.
+## 🌟 Key Features
 
-4. **Pemrosesan Asinkron (Worker Pool Pattern)**:
-   - Event pesan masuk diterima via *event handler* whatsmeow, disaring dari pesan grup/broadcast dan pesan diri sendiri (*outbound*), lalu dimasukkan ke dalam antrean *buffered channel*.
-   - Sekumpulan worker goroutine terkelola memproses obrolan, memanggil Omniroute AI, menyimpan ke DB, dan mengirimkan balasan kembali ke WhatsApp.
+1. **WhatsApp Session Persistence**:
+   - Registered sessions stored directly in PostgreSQL internal table (`sqlstore`) or local SQLite file.
+   - Sessions remain connected across application restarts (*persistent login*).
 
-5. **Pemecahan Teks Pintar (*Smart Text Chunking*)**:
-   - Pesan balasan AI yang melebihi batas WhatsApp (~4.000 karakter) dipecah secara cerdas berdasarkan paragraf (`\n\n`), baris baru (`\n`), akhir kalimat (`. `, `! `, `? `), atau spasi kata tanpa memotong kata atau karakter multi-byte/emoji.
+2. **Two QR Code Display Modes**:
+   - **Terminal Console**: Automatically printed on startup using UTF-8 half-block representation.
+   - **Web Browser (`GET /qr`)**: Modern HTML dashboard displaying QR Code dynamically (base64 PNG) with auto-refresh and automatic pairing status polling. Direct image endpoint available at `GET /qr/image`.
+
+3. **Chat Context Management in PostgreSQL**:
+   - `chat_histories` table stores conversation history (`user` & `assistant` messages).
+   - Query retrieves last `N` messages and sorts them chronologically ascending for AI context prompt.
+   - Equipped with *composite index* `(phone_number, created_at DESC, id DESC)` for sub-millisecond query performance.
+
+4. **Asynchronous Processing (Worker Pool Pattern)**:
+   - Incoming message events received via whatsmeow event handler, filtered from group/broadcast messages and outbound messages.
+   - Processed by managed goroutine worker pool: calls Omniroute AI, saves to database, and sends response back to WhatsApp.
+
+5. **Smart Text Chunking**:
+   - AI reply messages exceeding WhatsApp limit (~4,000 characters) are intelligently chunked based on paragraphs (`\n\n`), newlines (`\n`), sentence endings (`. `, `! `, `? `), or word spaces without breaking words or multi-byte/emoji characters.
 
 6. **Graceful Shutdown**:
-   - Menangani `SIGINT` dan `SIGTERM` secara tertib: menghentikan server HTTP Gin, menuntaskan tugas in-flight di worker pool (`sync.WaitGroup`), memutuskan koneksi WhatsApp, dan menutup PostgreSQL connection pool secara bersih.
+   - Handles `SIGINT` and `SIGTERM` signals properly: stops Gin HTTP server, completes in-flight worker tasks (`sync.WaitGroup`), disconnects WhatsApp connection, and cleanly closes PostgreSQL connection pool.
 
 ---
 
-## 🏗️ Struktur Direktori Proyek
+## 🏗️ Project Directory Structure
 
 ```
 omniroute-api-wa/
 ├── cmd/
 │   └── api/
-│       └── main.go                 # Entrypoint aplikasi & lifecycle orchestration
+│       └── main.go                 # Application entrypoint & lifecycle orchestration
 ├── internal/
 │   ├── config/
-│   │   ├── config.go              # Parser & validator environment variable
-│   │   └── config_test.go         # Unit test konfigurasi
+│   │   ├── config.go              # Environment variable parser & validator
+│   │   └── config_test.go         # Configuration unit tests
 │   ├── domain/
-│   │   └── chat.go                # Entity domain, DTO Omniroute & WhatsApp
+│   │   └── chat.go                # Domain entities, Omniroute & WhatsApp DTOs
 │   ├── repository/
 │   │   └── postgres/
-│   │       └── chat_repository.go # Query layer PostgreSQL (pgxpool)
+│   │       └── chat_repository.go # PostgreSQL query layer (pgxpool)
 │   ├── service/
-│   │   ├── omniroute_service.go   # HTTP client integrasi Omniroute AI
+│   │   ├── omniroute_service.go   # Omniroute AI HTTP client integration
 │   │   ├── omniroute_service_test.go
 │   │   └── gowa_service.go        # whatsmeow client, QR streamer, & sender
 │   ├── delivery/
@@ -58,118 +62,119 @@ omniroute-api-wa/
 │   │       ├── handler.go         # Gin controller (/health, /status, /qr)
 │   │       └── middleware.go      # Logging, CORS, Panic Recovery
 │   └── worker/
-│       └── pool.go                # Bounded Worker Pool & pipeline AI
+│       └── pool.go                # Bounded Worker Pool & AI pipeline
 ├── pkg/
 │   └── textutil/
-│       ├── chunker.go             # Helper pemecah string panjang WhatsApp
-│       └── chunker_test.go        # Unit test text chunker
+│       ├── chunker.go             # Helper for splitting long WhatsApp messages
+│       └── chunker_test.go        # Text chunker unit tests
 ├── migrations/
-│   └── 000001_create_chat_histories_table.up.sql # DDL skema DB PostgreSQL
-├── docker-compose.yml              # Konfigurasi container PostgreSQL & App
+│   └── 000001_create_chat_histories_table.up.sql # PostgreSQL schema DDL
+├── docker-compose.yml              # PostgreSQL & App container configuration
 ├── Dockerfile                      # Multi-stage production build
-├── .env.example                    # Template konfigurasi environment
+├── .env.example                    # Environment configuration template
 ├── go.mod
 └── go.sum
 ```
 
 ---
 
-## ⚙️ Variabel Lingkungan (.env)
+## ⚙️ Environment Variables (.env)
 
-> **Catatan:** Salin `.env.example` menjadi `.env` lalu isi nilai yang sesuai. File `.env` **tidak boleh** di-commit ke repositori (sudah terdaftar di `.gitignore`).
+> **Note:** Copy `.env.example` to `.env` and fill in appropriate values. The `.env` file **must not** be committed to the repository (already listed in `.gitignore`).
 
-| Variabel | Tipe | Default | Wajib | Deskripsi |
+| Variable | Type | Default | Required | Description |
 |---|---|---|:---:|---|
-| `APP_PORT` | String | `8080` | | Port HTTP Gin server. Menggunakan `APP_PORT` (bukan `PORT`) agar tidak bentrok dengan port default Omniroute CLI (`20128`) |
-| `GIN_MODE` | String | `release` | | Mode Gin: `debug` atau `release` |
-| `DB_HOST` | String | — | ✅ | Host server PostgreSQL |
-| `DB_PORT` | String | — | ✅ | Port server PostgreSQL (biasanya `5432`) |
-| `DB_USER` | String | — | ✅ | Username database PostgreSQL |
-| `DB_PASSWORD` | String | — | ✅ | Password database PostgreSQL |
-| `DB_NAME` | String | — | ✅ | Nama database PostgreSQL |
-| `DB_SSLMODE` | String | `disable` | | SSL mode koneksi PostgreSQL (`disable`, `require`, `verify-full`) |
-| `OMNIROUTE_API_BASE_URL` | String | — | ✅ | Endpoint base Omniroute AI. Port default Omniroute CLI: `http://localhost:20128/v1` |
-| `OMNIROUTE_API_KEY` | String | — | | API Key autentikasi Omniroute (opsional jika tidak dikonfigurasi di server) |
-| `OMNIROUTE_MODEL` | String | `auto` | | Nama model AI yang digunakan (`auto` untuk pemilihan otomatis) |
-| `MAX_CONTEXT_MESSAGES` | Integer | `10` | | Jumlah pesan riwayat terakhir yang dikirim sebagai konteks ke AI |
-| `WHATSAPP_SESSION_STORE` | String | `postgres` | | Media penyimpanan sesi WhatsApp: `postgres` atau `sqlite` |
-| `WHATSAPP_SQLITE_PATH` | String | `whatsapp_session.db` | | Path file SQLite (hanya berlaku jika `WHATSAPP_SESSION_STORE=sqlite`) |
-| `WORKER_POOL_SIZE` | Integer | `5` | | Jumlah goroutine worker pemrosesan pesan AI secara paralel |
-| `WORKER_QUEUE_SIZE` | Integer | `100` | | Kapasitas antrean buffered channel untuk pesan masuk |
+| `APP_PORT` | String | `8080` | | HTTP Gin server port. Using `APP_PORT` (not `PORT`) to avoid conflict with Omniroute CLI default port (`20128`) |
+| `GIN_MODE` | String | `release` | | Gin mode: `debug` or `release` |
+| `DB_HOST` | String | — | ✅ | PostgreSQL server host |
+| `DB_PORT` | String | — | ✅ | PostgreSQL server port (usually `5432`) |
+| `DB_USER` | String | — | ✅ | PostgreSQL database username |
+| `DB_PASSWORD` | String | — | ✅ | PostgreSQL database password |
+| `DB_NAME` | String | — | ✅ | PostgreSQL database name |
+| `DB_SSLMODE` | String | `disable` | | PostgreSQL connection SSL mode (`disable`, `require`, `verify-full`) |
+| `OMNIROUTE_API_BASE_URL` | String | — | ✅ | Omniroute AI base endpoint. Default Omniroute CLI port: `http://localhost:20128/v1` |
+| `OMNIROUTE_API_KEY` | String | — | | Omniroute authentication API key (optional if not configured on server) |
+| `OMNIROUTE_MODEL` | String | `auto` | | AI model name to use (`auto` for automatic selection) |
+| `MAX_CONTEXT_MESSAGES` | Integer | `10` | | Number of recent messages sent as context to AI |
+| `WHATSAPP_SESSION_STORE` | String | `postgres` | | WhatsApp session storage medium: `postgres` or `sqlite` |
+| `WHATSAPP_SQLITE_PATH` | String | `whatsapp_session.db` | | SQLite file path (only applies if `WHATSAPP_SESSION_STORE=sqlite`) |
+| `WORKER_POOL_SIZE` | Integer | `5` | | Number of goroutine workers processing AI messages in parallel |
+| `WORKER_QUEUE_SIZE` | Integer | `100` | | Buffered channel capacity for incoming messages |
 
 ---
 
-## 🚀 Panduan Menjalankan
+## 🚀 Getting Started
 
-### Prasyarat
+### Prerequisites
 
 - [Go](https://go.dev/dl/) 1.21+
-- [Docker](https://www.docker.com/) & Docker Compose (untuk menjalankan PostgreSQL)
-- Omniroute CLI berjalan di mesin lokal (default port `20128`)
+- [Docker](https://www.docker.com/) & Docker Compose (for running PostgreSQL)
+- Omniroute CLI running on local machine (default port `20128`)
 
-### 1. Konfigurasi Environment
+### 1. Environment Configuration
 
 ```bash
-# Salin template konfigurasi
+# Copy configuration template
 cp .env.example .env
 
-# Edit .env dan isi nilai yang sesuai (DB_PASSWORD, OMNIROUTE_API_KEY, dll.)
+# Edit .env and fill in appropriate values (DB_PASSWORD, OMNIROUTE_API_KEY, etc.)
 ```
 
-### 2. Menjalankan Database PostgreSQL via Docker Compose
+### 2. Run PostgreSQL Database via Docker Compose
 
 ```bash
-# Jalankan container PostgreSQL saja
+# Run PostgreSQL container only
 docker compose up -d postgres
 
-# Atau jalankan seluruh stack (PostgreSQL + App) sekaligus
+# Or run entire stack (PostgreSQL + App) at once
 docker compose up -d
 ```
 
-> **Catatan:** Saat menjalankan `app` via Docker, `DB_HOST` otomatis di-set ke `postgres` (nama service dalam jaringan Docker). Pastikan `OMNIROUTE_API_BASE_URL` mengarah ke `http://host.docker.internal:20128/v1` agar container bisa mengakses Omniroute CLI di host.
+> **Note:** When running `app` via Docker, `DB_HOST` is automatically set to `postgres` (service name in Docker network). Ensure `OMNIROUTE_API_BASE_URL` points to `http://host.docker.internal:20128/v1` so container can access Omniroute CLI on host.
 
-### 3. Menjalankan Aplikasi Golang (Lokal)
+### 3. Run Golang Application (Local)
 
 ```bash
-# Unduh dependensi
+# Download dependencies
 go mod download
 
-# Jalankan service
+# Run service
 go run ./cmd/api/main.go
 ```
 
-### 4. Autentikasi / Pairing WhatsApp
+### 4. WhatsApp Authentication / Pairing
 
-1. Saat service pertama kali berjalan, kode QR dicetak otomatis di terminal.
-2. Buka browser dan akses:
+1. When service starts for the first time, QR code is automatically printed to terminal.
+2. Open browser and access:
    ```
    http://localhost:8080/qr
    ```
-3. Pindai QR Code dari WhatsApp di smartphone Anda:
-   - Buka **Pengaturan / Titik Tiga** → **Perangkat Tertaut** → **Tautkan Perangkat**.
-   - Arahkan kamera ke kode QR yang tampil di browser atau terminal.
-4. Setelah berhasil, halaman web otomatis memperbarui status menjadi **WhatsApp Terhubung** dan Anda akan diarahkan ke `/status`.
+3. Scan QR Code from WhatsApp on your smartphone:
+   - Open **Settings / Three Dots** → **Linked Devices** → **Link a Device**.
+   - Point camera at QR code displayed in browser or terminal.
+4. Upon successful pairing, web page automatically updates status to **WhatsApp Connected** and redirects to `/status`.
 
 ---
 
-## 📡 Daftar Endpoint HTTP
+## 📡 HTTP Endpoint List
 
-| Metode | Endpoint | Deskripsi |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/` | Redirect ke `/qr` atau `/status` sesuai status login |
-| `GET` | `/health` | Health check komponen DB dan koneksi WhatsApp |
-| `GET` | `/status` | Detail JSON status aplikasi, sesi JID, DB, dan konfigurasi |
-| `GET` | `/qr` | Halaman Web HTML auto-refresh QR Code / Tampilan status terhubung |
-| `GET` | `/qr?format=json` | Mengambil data mentah string QR dalam format JSON |
-| `GET` | `/qr/image` | Mengambil gambar QR Code dalam format PNG murni |
+| `GET` | `/` | Redirects to `/qr` or `/status` based on login status |
+| `GET` | `/health` | Health check for DB and WhatsApp connection components |
+| `GET` | `/status` | JSON details of app status, session JID, DB, and configuration |
+| `GET` | `/qr` | Web HTML auto-refresh QR Code / Connected status display |
+| `GET` | `/qr?format=json` | Retrieve raw QR string data in JSON format |
+| `GET` | `/qr/image` | Retrieve QR Code image in pure PNG format |
 
 ---
 
-## 🧪 Menjalankan Pengujian (Unit Tests)
+## 🧪 Running Tests (Unit Tests)
 
 ```bash
 go test -v ./...
 ```
+
 Output:
 ```
 === RUN   TestConfigDefaults
@@ -188,4 +193,4 @@ Output:
 --- PASS: TestChunkTextUnicodeRunes (0.00s)
 PASS
 ```
-Semua test lolos tanpa kesalahan.
+All tests pass without errors.
