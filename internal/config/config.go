@@ -41,6 +41,10 @@ type Config struct {
 	// Worker Pool Concurrency
 	WorkerPoolSize  int
 	WorkerQueueSize int
+
+	// Multimodal / Media Settings
+	EnableMultimodalAI bool
+	MaxMediaSizeMB     int
 }
 
 // Load reads configuration from .env file and validates mandatory environment variables.
@@ -65,6 +69,8 @@ func Load() (*Config, error) {
 		WhatsAppSQLitePath:   getEnv("WHATSAPP_SQLITE_PATH", "whatsapp_session.db"),
 		WorkerPoolSize:       getEnvAsInt("WORKER_POOL_SIZE", internal.DefaultWorkerPoolSize),
 		WorkerQueueSize:      getEnvAsInt("WORKER_QUEUE_SIZE", internal.DefaultWorkerQueueSize),
+		EnableMultimodalAI:   getEnvAsBool("ENABLE_MULTIMODAL_AI", true),
+		MaxMediaSizeMB:       getEnvAsInt("MAX_MEDIA_SIZE_MB", 5),
 	}
 
 	return cfg, cfg.Validate()
@@ -137,8 +143,20 @@ func getEnvAsInt(key string, defaultVal int) int {
 	}
 	val, err := strconv.Atoi(valStr)
 	if err != nil {
-		// Warn instead of silently swallowing the parse error
 		fmt.Fprintf(os.Stderr, "WARN: env var %s=%q is not a valid integer, using default %d\n", key, valStr, defaultVal)
+		return defaultVal
+	}
+	return val
+}
+
+func getEnvAsBool(key string, defaultVal bool) bool {
+	valStr := getEnv(key, "")
+	if valStr == "" {
+		return defaultVal
+	}
+	val, err := strconv.ParseBool(valStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARN: env var %s=%q is not a valid bool, using default %v\n", key, valStr, defaultVal)
 		return defaultVal
 	}
 	return val

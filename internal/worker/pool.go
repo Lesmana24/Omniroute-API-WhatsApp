@@ -22,35 +22,42 @@ type WorkerPool interface {
 }
 
 type workerPool struct {
-	numWorkers   int
-	maxContext   int
-	jobQueue     chan domain.InboundMessageJob
-	chatRepo     postgres.ChatRepository
-	omnirouteSvc service.OmnirouteService
-	gowaSvc      service.GoWAService
-	logger       *slog.Logger
+	numWorkers         int
+	maxContext         int
+	enableMultimodal   bool
+	maxMediaSizeMB     int
+	jobQueue           chan domain.InboundMessageJob
+	chatRepo           postgres.ChatRepository
+	mediaRepo          postgres.MediaRepository
+	omnirouteSvc       service.OmnirouteService
+	gowaSvc            service.GoWAService
+	logger             *slog.Logger
 
 	wg       sync.WaitGroup
 	isClosed atomic.Bool
 	stopOnce sync.Once
 }
 
-// NewWorkerPool initializes the background worker pool.
+// NewWorkerPool initializes the background worker pool with media support.
 func NewWorkerPool(
 	cfg *config.Config,
 	chatRepo postgres.ChatRepository,
+	mediaRepo postgres.MediaRepository,
 	omnirouteSvc service.OmnirouteService,
 	gowaSvc service.GoWAService,
 	logger *slog.Logger,
 ) WorkerPool {
 	return &workerPool{
-		numWorkers:   cfg.WorkerPoolSize,
-		maxContext:   cfg.MaxContextMessages,
-		jobQueue:     make(chan domain.InboundMessageJob, cfg.WorkerQueueSize),
-		chatRepo:     chatRepo,
-		omnirouteSvc: omnirouteSvc,
-		gowaSvc:      gowaSvc,
-		logger:       logger,
+		numWorkers:       cfg.WorkerPoolSize,
+		maxContext:       cfg.MaxContextMessages,
+		enableMultimodal: cfg.EnableMultimodalAI,
+		maxMediaSizeMB:   cfg.MaxMediaSizeMB,
+		jobQueue:         make(chan domain.InboundMessageJob, cfg.WorkerQueueSize),
+		chatRepo:         chatRepo,
+		mediaRepo:        mediaRepo,
+		omnirouteSvc:     omnirouteSvc,
+		gowaSvc:          gowaSvc,
+		logger:           logger,
 	}
 }
 
@@ -60,6 +67,7 @@ func (p *workerPool) Start() {
 		"workers", p.numWorkers,
 		"queue_capacity", cap(p.jobQueue),
 		"max_context", p.maxContext,
+		"enable_multimodal", p.enableMultimodal,
 	)
 
 	for i := 1; i <= p.numWorkers; i++ {
@@ -68,10 +76,9 @@ func (p *workerPool) Start() {
 	}
 }
 
-// Enqueue adds an incoming message job to the queue. Returns false if closed or queue is full.
+// Enqueue adds an incoming WhatsApp job to the worker queue.
 func (p *workerPool) Enqueue(job domain.InboundMessageJob) bool {
 	if p.isClosed.Load() {
-		p.logger.Warn("Worker pool is closed, discarding incoming message", "sender", job.PhoneNumber)
 		return false
 	}
 
@@ -79,42 +86,38 @@ func (p *workerPool) Enqueue(job domain.InboundMessageJob) bool {
 	case p.jobQueue <- job:
 		return true
 	default:
-		p.logger.Error("Worker pool queue is full, dropped message",
-			"sender", job.PhoneNumber,
-			"queue_length", len(p.jobQueue),
-		)
 		return false
 	}
 }
 
-// Stop closes the queue and waits for all active jobs to complete.
+// Stop waits for pending messages to flush and gracefully terminates workers.
 func (p *workerPool) Stop(ctx context.Context) error {
+	var stopErr error
 	p.stopOnce.Do(func() {
 		p.isClosed.Store(true)
 		close(p.jobQueue)
-		p.logger.Info("Worker pool incoming queue closed, draining in-flight jobs...")
+
+		done := make(chan struct{})
+		go func() {
+			p.wg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			p.logger.Info("All background workers stopped gracefully")
+		case <-ctx.Done():
+			stopErr = ctx.Err()
+			p.logger.Warn("Worker pool shutdown timed out with lingering jobs", "error", stopErr)
+		}
 	})
 
-	doneChan := make(chan struct{})
-	go func() {
-		p.wg.Wait()
-		close(doneChan)
-	}()
-
-	select {
-	case <-doneChan:
-		p.logger.Info("All worker pool tasks completed cleanly")
-		return nil
-	case <-ctx.Done():
-		p.logger.Warn("Worker pool shutdown timed out before tasks completed")
-		return ctx.Err()
-	}
+	return stopErr
 }
 
-// worker loops over jobs from the queue.
+// worker routine pulling jobs from the internal channel.
 func (p *workerPool) worker(id int) {
 	defer p.wg.Done()
-	p.logger.Debug("Worker started", "worker_id", id)
 
 	for job := range p.jobQueue {
 		p.processJob(id, job)
@@ -123,7 +126,7 @@ func (p *workerPool) worker(id int) {
 	p.logger.Debug("Worker terminated", "worker_id", id)
 }
 
-// processJob executes the AI pipeline for a single user message.
+// processJob executes the AI pipeline for a single user message (text and/or media).
 func (p *workerPool) processJob(workerID int, job domain.InboundMessageJob) {
 	startTime := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -132,9 +135,11 @@ func (p *workerPool) processJob(workerID int, job domain.InboundMessageJob) {
 	p.logger.Info("Worker processing inbound message",
 		"worker_id", workerID,
 		"sender", job.PhoneNumber,
+		"has_media", len(job.MediaAttachments) > 0,
+		"media_count", len(job.MediaAttachments),
 	)
 
-	// Step a & b: Save incoming user message to PostgreSQL
+	// Step a: Save incoming user message to PostgreSQL
 	userMsg := &domain.ChatMessage{
 		PhoneNumber: job.PhoneNumber,
 		Role:        domain.RoleUser,
@@ -146,7 +151,34 @@ func (p *workerPool) processJob(workerID int, job domain.InboundMessageJob) {
 			"sender", job.PhoneNumber,
 			"error", err,
 		)
-		// Continue execution even if DB save fails to not break AI reply
+	}
+
+	// Step b: If media attachments exist, save them and link to chatMessage
+	var validMedia []domain.MediaAttachment
+	if len(job.MediaAttachments) > 0 && userMsg.ID > 0 {
+		maxSizeBytes := int64(p.maxMediaSizeMB) * 1024 * 1024
+		for _, media := range job.MediaAttachments {
+			// Validate size constraint (5MB limit)
+			if maxSizeBytes > 0 && media.Size > maxSizeBytes {
+				p.logger.Warn("Media attachment exceeds size limit, skipping",
+					"size", media.Size,
+					"max_bytes", maxSizeBytes,
+				)
+				continue
+			}
+
+			media.ChatMessageID = userMsg.ID
+			media.CreatedAt = time.Now()
+			if p.mediaRepo != nil {
+				if err := p.mediaRepo.SaveMediaAttachment(&media); err != nil {
+					p.logger.Error("Failed to save media attachment to DB",
+						"chat_message_id", userMsg.ID,
+						"error", err,
+					)
+				}
+			}
+			validMedia = append(validMedia, media)
+		}
 	}
 
 	// Step c: Fetch recent N messages from PostgreSQL as context
@@ -159,8 +191,7 @@ func (p *workerPool) processJob(workerID int, job domain.InboundMessageJob) {
 		recentMsgs = nil
 	}
 
-	// Exclude the current user message from history slice if present
-	// to prevent duplicating the prompt in the context payload
+	// Exclude current message from history context
 	historyContext := make([]domain.ChatMessage, 0, len(recentMsgs))
 	for _, m := range recentMsgs {
 		if userMsg.ID > 0 && m.ID == userMsg.ID {
@@ -169,17 +200,38 @@ func (p *workerPool) processJob(workerID int, job domain.InboundMessageJob) {
 		historyContext = append(historyContext, m)
 	}
 
-	// Step d & e: Send prompt and context to Omniroute AI API
-	aiReplyRaw, err := p.omnirouteSvc.GenerateResponse(ctx, historyContext, job.Content)
+	// Step d & e: Send prompt to Omniroute AI API (multimodal if media present)
+	var aiReplyRaw string
+	if p.enableMultimodal && len(validMedia) > 0 {
+		p.logger.Info("Dispatching multimodal request to Omniroute AI",
+			"sender", job.PhoneNumber,
+			"image_count", len(validMedia),
+		)
+		aiReplyRaw, err = p.omnirouteSvc.GenerateResponseWithMedia(ctx, historyContext, job.Content, validMedia)
+	} else {
+		aiReplyRaw, err = p.omnirouteSvc.GenerateResponse(ctx, historyContext, job.Content)
+	}
+
 	if err != nil {
 		p.logger.Error("Failed to generate AI response from Omniroute",
 			"sender", job.PhoneNumber,
 			"error", err,
 		)
 
+		// Generic fallback response
 		errorMessage := "Mohon maaf, saat ini sistem AI kami sedang mengalami kendala teknis. Silakan coba kembali dalam beberapa saat."
 		_ = p.gowaSvc.SendMessage(ctx, job.SenderJID, errorMessage)
 		return
+	}
+
+	// Mark media as processed
+	if p.mediaRepo != nil && len(validMedia) > 0 {
+		now := time.Now()
+		for _, m := range validMedia {
+			if m.ID > 0 {
+				_ = p.mediaRepo.UpdateMediaProcessed(m.ID, &now)
+			}
+		}
 	}
 
 	// Apply WhatsApp formatting

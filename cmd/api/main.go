@@ -41,10 +41,10 @@ func main() {
 	runDatabaseMigrations(pgPool, logger)
 
 	// Initialize services
-	chatRepo, omnirouteSvc, gowaSvc := initializeServices(cfg, pgPool, logger)
+	chatRepo, mediaRepo, omnirouteSvc, gowaSvc := initializeServices(cfg, pgPool, logger)
 
 	// Initialize and start worker pool
-	workerPool := initializeWorkerPool(cfg, chatRepo, omnirouteSvc, gowaSvc, logger)
+	workerPool := initializeWorkerPool(cfg, chatRepo, mediaRepo, omnirouteSvc, gowaSvc, logger)
 	workerPool.Start()
 
 	// Bind inbound message handler
@@ -134,11 +134,13 @@ func runDatabaseMigrations(pool *pgxpool.Pool, logger *slog.Logger) {
 // initializeServices initializes the repositories and services.
 func initializeServices(cfg *config.Config, pgPool *pgxpool.Pool, logger *slog.Logger) (
 	postgres.ChatRepository,
+	postgres.MediaRepository,
 	service.OmnirouteService,
 	service.GoWAService,
 ) {
 	chatRepo := postgres.NewChatRepository(pgPool)
-	omnirouteSvc := service.NewOmnirouteService(cfg)
+	mediaRepo := postgres.NewMediaRepository(pgPool)
+	omnirouteSvc := service.NewOmnirouteService(cfg, logger)
 
 	gowaSvc, err := service.NewGoWAService(context.Background(), cfg, logger)
 	if err != nil {
@@ -146,20 +148,19 @@ func initializeServices(cfg *config.Config, pgPool *pgxpool.Pool, logger *slog.L
 		os.Exit(1)
 	}
 
-	return chatRepo, omnirouteSvc, gowaSvc
+	return chatRepo, mediaRepo, omnirouteSvc, gowaSvc
 }
 
 // initializeWorkerPool initializes and returns the worker pool.
 func initializeWorkerPool(
 	cfg *config.Config,
 	chatRepo postgres.ChatRepository,
+	mediaRepo postgres.MediaRepository,
 	omnirouteSvc service.OmnirouteService,
 	gowaSvc service.GoWAService,
 	logger *slog.Logger,
 ) worker.WorkerPool {
-	workerPool := worker.NewWorkerPool(cfg, chatRepo, omnirouteSvc, gowaSvc, logger)
-	workerPool.Start()
-	return workerPool
+	return worker.NewWorkerPool(cfg, chatRepo, mediaRepo, omnirouteSvc, gowaSvc, logger)
 }
 
 // setupHTTPServer sets up and returns the HTTP server.

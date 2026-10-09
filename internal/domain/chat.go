@@ -12,19 +12,55 @@ const (
 	RoleSystem    = "system"
 )
 
+type MediaType string
+
+const (
+	MediaTypeImage      MediaType = "image"
+	MediaTypeVideo      MediaType = "video"
+	MediaTypeDocument   MediaType = "document"
+	MediaTypeSticker    MediaType = "sticker"
+)
+
+type MediaAttachment struct {
+	ID            int64      `json:"id"`
+	ChatMessageID int64      `json:"chat_message_id"`
+	Type          MediaType  `json:"type"`
+	URL           string     `json:"url"`
+	MimeType      string     `json:"mime_type"`
+	FileName      string     `json:"file_name"`
+	Size          int64      `json:"size"`
+	Base64Data    string     `json:"base64_data,omitempty"` // in-memory only, not persisted
+	ProcessedAt   *time.Time `json:"processed_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
 // ChatMessage represents a single message record in the chat_histories table.
 type ChatMessage struct {
-	ID          int64     `json:"id"`
-	PhoneNumber string    `json:"phone_number"`
-	Role        string    `json:"role"` // "user", "assistant", or "system"
-	Content     string    `json:"content"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID               int64     `json:"id"`
+	PhoneNumber      string    `json:"phone_number"`
+	Role             string    `json:"role"` // "user", "assistant", or "system"
+	Content          string    `json:"content"`
+	MediaAttachmentIDs []int64 `json:"media_attachment_ids"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // OmnirouteMessage represents a single chat turn in the Omniroute AI payload.
+// Content can be string or []OmnirouteContentPart (for multimodal).
 type OmnirouteMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"`
+}
+
+// OmnirouteContentPart represents a part of a multimodal content message.
+type OmnirouteContentPart struct {
+	Type     string             `json:"type"` // "text" or "image_url"
+	Text     string             `json:"text,omitempty"`
+	ImageURL *OmnirouteImageURL `json:"image_url,omitempty"`
+}
+
+// OmnirouteImageURL holds the image URL or base64 data for vision models.
+type OmnirouteImageURL struct {
+	URL string `json:"url"`
 }
 
 // OmnirouteChatRequest is the payload sent to Omniroute AI chat completions.
@@ -68,8 +104,9 @@ type WhatsAppStatus struct {
 
 // InboundMessageJob represents a task dispatched to the asynchronous worker pool.
 type InboundMessageJob struct {
-	SenderJID   types.JID
-	PhoneNumber string
-	Content     string
-	ReceivedAt  time.Time
+	SenderJID          types.JID
+	PhoneNumber        string
+	Content            string
+	MediaAttachments   []MediaAttachment
+	ReceivedAt         time.Time
 }

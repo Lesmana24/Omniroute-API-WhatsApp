@@ -62,7 +62,8 @@ func NewChatRepository(pool *pgxpool.Pool) ChatRepository {
 	}
 }
 
-// AutoMigrate creates the chat_histories table and indexes if not already present.
+// AutoMigrate creates required tables/columns if not already present.
+// Uses ALTER TABLE ... ADD COLUMN IF NOT EXISTS to safely handle existing tables.
 func AutoMigrate(ctx context.Context, pool *pgxpool.Pool) error {
 	query := `
 	CREATE TABLE IF NOT EXISTS chat_histories (
@@ -73,11 +74,31 @@ func AutoMigrate(ctx context.Context, pool *pgxpool.Pool) error {
 		created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_chat_histories_phone_created 
+	ALTER TABLE chat_histories ADD COLUMN IF NOT EXISTS media_attachment_ids BIGINT[];
+
+	CREATE INDEX IF NOT EXISTS idx_chat_histories_phone_created
 		ON chat_histories (phone_number, created_at DESC, id DESC);
 
-	CREATE INDEX IF NOT EXISTS idx_chat_histories_created_at 
+	CREATE INDEX IF NOT EXISTS idx_chat_histories_created_at
 		ON chat_histories (created_at);
+
+	CREATE TABLE IF NOT EXISTS media_attachments (
+		id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+		chat_message_id BIGINT NOT NULL REFERENCES chat_histories(id) ON DELETE CASCADE,
+		type VARCHAR(16) NOT NULL,
+		url TEXT NOT NULL,
+		mime_type VARCHAR(255) NOT NULL,
+		file_name VARCHAR(255),
+		size BIGINT,
+		processed_at TIMESTAMPTZ,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_media_attachments_chat_message
+		ON media_attachments (chat_message_id);
+
+	CREATE INDEX IF NOT EXISTS idx_media_attachments_type
+		ON media_attachments (type);
 	`
 	_, err := pool.Exec(ctx, query)
 	if err != nil {
@@ -89,12 +110,17 @@ func AutoMigrate(ctx context.Context, pool *pgxpool.Pool) error {
 // Save inserts a new chat message and updates the struct with generated ID and CreatedAt.
 func (r *chatRepository) Save(ctx context.Context, msg *domain.ChatMessage) error {
 	query := `
-		INSERT INTO chat_histories (phone_number, role, content, created_at)
-		VALUES ($1, $2, $3, now())
+		INSERT INTO chat_histories (phone_number, role, content, media_attachment_ids, created_at)
+		VALUES ($1, $2, $3, $4, now())
 		RETURNING id, created_at;
 	`
 
-	err := r.pool.QueryRow(ctx, query, msg.PhoneNumber, msg.Role, msg.Content).Scan(&msg.ID, &msg.CreatedAt)
+	var mediaIDs []int64
+	if len(msg.MediaAttachmentIDs) > 0 {
+		mediaIDs = msg.MediaAttachmentIDs
+	}
+
+	err := r.pool.QueryRow(ctx, query, msg.PhoneNumber, msg.Role, msg.Content, mediaIDs).Scan(&msg.ID, &msg.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to save chat message: %w", err)
 	}

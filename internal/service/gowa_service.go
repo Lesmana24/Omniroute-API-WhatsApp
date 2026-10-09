@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -283,10 +284,21 @@ func (s *goWAService) handleWhatsAppEvent(evt interface{}) {
 			return
 		}
 
-		// 3. Extract text content — ignore non-text messages (images, stickers, etc.)
+		// 3. Extract text content and detect media
 		text := extractMessageText(v.Message)
-		if strings.TrimSpace(text) == "" {
+		hasMedia := v.Message.GetImageMessage() != nil ||
+			v.Message.GetVideoMessage() != nil ||
+			v.Message.GetDocumentMessage() != nil ||
+			v.Message.GetStickerMessage() != nil
+		
+		// Skip if both text and media are empty
+		if strings.TrimSpace(text) == "" && !hasMedia {
 			return
+		}
+		
+		// Add image indicator if image sent without caption
+		if hasMedia && strings.TrimSpace(text) == "" {
+			text = "[IMAGE ATTACHMENT]"
 		}
 
 		// 4. Extract sender info
@@ -301,13 +313,17 @@ func (s *goWAService) handleWhatsAppEvent(evt interface{}) {
 			"length", len(text),
 		)
 
-		// 5. Dispatch to background worker pool
+		// 5. Extract and download media attachments
+		mediaAttachments := s.extractAndDownloadMedia(v.Message)
+
+		// 6. Dispatch to background worker pool
 		if s.inboundHandler != nil {
 			s.inboundHandler(domain.InboundMessageJob{
-				SenderJID:   senderJID,
-				PhoneNumber: phoneNumber,
-				Content:     text,
-				ReceivedAt:  v.Info.Timestamp,
+				SenderJID:        senderJID,
+				PhoneNumber:      phoneNumber,
+				Content:          text,
+				MediaAttachments: mediaAttachments,
+				ReceivedAt:       v.Info.Timestamp,
 			})
 		}
 
@@ -368,4 +384,139 @@ func extractMessageText(msg *waE2E.Message) string {
 	}
 
 	return ""
+}
+
+// extractAndDownloadMedia extracts all media from a WhatsApp message,
+// downloads each attachment via whatsmeow, and encodes as base64 data URL.
+// Falls back to direct URL if download fails.
+func (s *goWAService) extractAndDownloadMedia(msg *waE2E.Message) []domain.MediaAttachment {
+	var attachments []domain.MediaAttachment
+
+	if msg == nil {
+		return attachments
+	}
+
+	// Unwrap Ephemeral Messages
+	if msg.EphemeralMessage != nil && msg.EphemeralMessage.Message != nil {
+		return s.extractAndDownloadMedia(msg.EphemeralMessage.Message)
+	}
+
+	// Unwrap View Once Messages
+	if msg.ViewOnceMessage != nil && msg.ViewOnceMessage.Message != nil {
+		return s.extractAndDownloadMedia(msg.ViewOnceMessage.Message)
+	}
+
+	// Unwrap View Once V2 Messages
+	if msg.ViewOnceMessageV2 != nil && msg.ViewOnceMessageV2.Message != nil {
+		return s.extractAndDownloadMedia(msg.ViewOnceMessageV2.Message)
+	}
+
+	// Extract Image
+	if img := msg.GetImageMessage(); img != nil {
+		mimeType := "image/jpeg"
+		if img.GetMimetype() != "" {
+			mimeType = img.GetMimetype()
+		}
+		fileName := fmt.Sprintf("image_%d.jpg", time.Now().UnixNano())
+		att := domain.MediaAttachment{
+			Type:      domain.MediaTypeImage,
+			URL:       img.GetURL(),
+			MimeType:  mimeType,
+			FileName:  fileName,
+			Size:      int64(img.GetFileLength()),
+			CreatedAt: time.Now(),
+		}
+		att.Base64Data = s.downloadAsBase64(img, mimeType)
+		s.logger.Info("Extracted image attachment",
+			"url_len", len(att.URL),
+			"has_base64", att.Base64Data != "",
+			"size", att.Size,
+		)
+		attachments = append(attachments, att)
+	}
+
+	// Extract Video
+	if vid := msg.GetVideoMessage(); vid != nil {
+		mimeType := "video/mp4"
+		if vid.GetMimetype() != "" {
+			mimeType = vid.GetMimetype()
+		}
+		fileName := fmt.Sprintf("video_%d.mp4", time.Now().UnixNano())
+		att := domain.MediaAttachment{
+			Type:      domain.MediaTypeVideo,
+			URL:       vid.GetURL(),
+			MimeType:  mimeType,
+			FileName:  fileName,
+			Size:      int64(vid.GetFileLength()),
+			CreatedAt: time.Now(),
+		}
+		att.Base64Data = s.downloadAsBase64(vid, mimeType)
+		attachments = append(attachments, att)
+	}
+
+	// Extract Document
+	if doc := msg.GetDocumentMessage(); doc != nil {
+		mimeType := "application/octet-stream"
+		if doc.GetMimetype() != "" {
+			mimeType = doc.GetMimetype()
+		}
+		fileName := doc.GetFileName()
+		if fileName == "" {
+			fileName = doc.GetTitle()
+		}
+		if fileName == "" {
+			fileName = fmt.Sprintf("document_%d", time.Now().UnixNano())
+		}
+		att := domain.MediaAttachment{
+			Type:      domain.MediaTypeDocument,
+			URL:       doc.GetURL(),
+			MimeType:  mimeType,
+			FileName:  fileName,
+			Size:      int64(doc.GetFileLength()),
+			CreatedAt: time.Now(),
+		}
+		att.Base64Data = s.downloadAsBase64(doc, mimeType)
+		attachments = append(attachments, att)
+	}
+
+	// Extract Sticker
+	if sticker := msg.GetStickerMessage(); sticker != nil {
+		mimeType := "image/webp"
+		if sticker.GetMimetype() != "" {
+			mimeType = sticker.GetMimetype()
+		}
+		fileName := fmt.Sprintf("sticker_%d.webp", time.Now().UnixNano())
+		att := domain.MediaAttachment{
+			Type:      domain.MediaTypeSticker,
+			URL:       sticker.GetURL(),
+			MimeType:  mimeType,
+			FileName:  fileName,
+			Size:      int64(sticker.GetFileLength()),
+			CreatedAt: time.Now(),
+		}
+		att.Base64Data = s.downloadAsBase64(sticker, mimeType)
+		attachments = append(attachments, att)
+	}
+
+	return attachments
+}
+
+// downloadAsBase64 downloads a WhatsApp media message via whatsmeow and returns
+// a base64 data URL string (data:<mime>;base64,<data>).
+// Returns empty string on failure so caller can fallback to direct URL.
+func (s *goWAService) downloadAsBase64(msg whatsmeow.DownloadableMessage, mimeType string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	data, err := s.client.Download(ctx, msg)
+	if err != nil {
+		s.logger.Warn("Failed to download media via whatsmeow, will use direct URL",
+			"error", err,
+			"mime_type", mimeType,
+		)
+		return ""
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(data)
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, encoded)
 }

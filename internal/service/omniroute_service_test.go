@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -56,7 +58,8 @@ func TestOmnirouteService_GenerateResponse(t *testing.T) {
 		OmnirouteModel:      "omniroute-default",
 	}
 
-	svc := NewOmnirouteService(cfg)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewOmnirouteService(cfg, logger)
 
 	history := []domain.ChatMessage{
 		{
@@ -94,7 +97,8 @@ func TestOmnirouteService_FallbackResponse(t *testing.T) {
 		OmnirouteModel:      "omniroute-default",
 	}
 
-	svc := NewOmnirouteService(cfg)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewOmnirouteService(cfg, logger)
 	reply, err := svc.GenerateResponse(context.Background(), nil, "Halo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
