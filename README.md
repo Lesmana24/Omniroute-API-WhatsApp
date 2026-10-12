@@ -100,10 +100,48 @@ omniroute-api-wa/
 | `WHATSAPP_SQLITE_PATH` | String | `whatsapp_session.db` | | SQLite file path (only applies if `WHATSAPP_SESSION_STORE=sqlite`) |
 | `WORKER_POOL_SIZE` | Integer | `5` | | Number of goroutine workers processing AI messages in parallel |
 | `WORKER_QUEUE_SIZE` | Integer | `100` | | Buffered channel capacity for incoming messages |
+| `ENABLE_MULTIMODAL_AI` | Boolean | `true` | | Enable/disable multimodal (image/media) analysis by AI |
+| `MAX_MEDIA_SIZE_MB` | Integer | `5` | | Maximum size for media attachments (in MB) to be processed by AI |
 
 ---
 
-## 🚀 Getting Started
+## 🌟 Key Features
+
+1. **WhatsApp Session Persistence**:
+   - Registered sessions stored directly in PostgreSQL internal table (`sqlstore`) or local SQLite file.
+   - Sessions remain connected across application restarts (*persistent login*).
+
+2. **Two QR Code Display Modes**:
+   - **Terminal Console**: Automatically printed on startup using UTF-8 half-block representation.
+   - **Web Browser (`GET /qr`)**: Modern HTML dashboard displaying QR Code dynamically (base64 PNG) with auto-refresh and automatic pairing status polling. Direct image endpoint available at `GET /qr/image`.
+
+3. **Chat Context Management in PostgreSQL**:
+   - `chat_histories` table stores conversation history (`user` & `assistant` messages).
+   - Query retrieves last `N` messages and sorts them chronologically ascending for AI context prompt.
+   - Equipped with *composite index* `(phone_number, created_at DESC, id DESC)` for sub-millisecond query performance.
+
+4. **Asynchronous Processing (Worker Pool Pattern)**:
+   - Incoming message events received via whatsmeow event handler, filtered from group/broadcast messages and outbound messages.
+   - Processed by managed goroutine worker pool: calls Omniroute AI, saves to database, and sends response back to WhatsApp.
+
+5. **Smart Text Chunking**:
+   - AI reply messages exceeding WhatsApp limit (~4,000 characters) are intelligently chunked based on paragraphs (`\n\n`), newlines (`\n`), sentence endings (`. `, `! `, `? `), or word spaces without breaking words or multi-byte/emoji characters.
+
+6. **Graceful Shutdown**:
+   - Handles `SIGINT` and `SIGTERM` signals properly: stops Gin HTTP server, completes in-flight worker tasks (`sync.WaitGroup`), disconnects WhatsApp connection, and cleanly closes PostgreSQL connection pool.
+
+7. **New: Multimodal Image/Media Analysis**:
+   - Service now intelligently processes image, video, document, and sticker attachments sent by users.
+   - Media content is downloaded via `whatsmeow` client, encoded to Base64 (for images), and sent to Omniroute AI using multimodal vision models.
+   - Supports multiple images in a single message, combining them for comprehensive analysis.
+   - For non-image media or if multimodal AI fails, it gracefully falls back to a text-only prompt with a generic annotation.
+   - **Constraint**: Each media file is limited to 5MB (configurable via `MAX_MEDIA_SIZE_MB`). Media data is processed temporarily and not stored permanently on disk.
+
+---
+
+## 🏗️ Project Directory Structure
+
+```
 
 ### Prerequisites
 

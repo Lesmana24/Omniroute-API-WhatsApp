@@ -35,6 +35,19 @@
 6. **优雅关闭**：
    - 正确处理`SIGINT`和`SIGTERM`信号：停止Gin HTTP服务器、完成worker池中的in-flight任务（`sync.WaitGroup`）、断开WhatsApp连接、干净关闭PostgreSQL连接池。
 
+7. **多模态图像分析**：
+   - 支持分析通过 WhatsApp 发送的图像（带或不带说明文字）。
+   - 自动将图像转换为 base64 数据 URL，以便 AI 模型直接访问。
+
+---
+
+## 📸 多模态图像分析
+
+该服务支持高级图像识别功能：
+- **工作流程**：接收消息 -> 检测媒体 -> 通过 whatsmeow 下载 -> 转换为 Base64 -> 发送至 Omniroute Vision 模型。
+- **回退机制**：如果多模态处理失败，系统会自动回退到纯文本模式，并告知 AI 用户附带了图像。
+- **数据库集成**：元数据存储在 `media_attachments` 表中，并通过 `media_attachment_ids` 与聊天记录关联。
+
 ---
 
 ## 🏗️ 项目目录结构
@@ -100,6 +113,8 @@ omniroute-api-wa/
 | `WHATSAPP_SQLITE_PATH` | String | `whatsapp_session.db` | | SQLite文件路径（仅在`WHATSAPP_SESSION_STORE=sqlite`时适用） |
 | `WORKER_POOL_SIZE` | Integer | `5` | | 并行处理AI消息的goroutine worker数量 |
 | `WORKER_QUEUE_SIZE` | Integer | `100` | | 传入消息的缓冲通道容量 |
+| `ENABLE_MULTIMODAL_AI` | Boolean | `true` | | 启用/禁用AI进行多模态（图像/媒体）分析 |
+| `MAX_MEDIA_SIZE_MB` | Integer | `5` | | AI处理媒体附件的最大大小（MB） |
 
 ---
 

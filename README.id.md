@@ -100,6 +100,8 @@ omniroute-api-wa/
 | `WHATSAPP_SQLITE_PATH` | String | `whatsapp_session.db` | | Path file SQLite (hanya berlaku jika `WHATSAPP_SESSION_STORE=sqlite`) |
 | `WORKER_POOL_SIZE` | Integer | `5` | | Jumlah goroutine worker pemrosesan pesan AI secara paralel |
 | `WORKER_QUEUE_SIZE` | Integer | `100` | | Kapasitas antrean buffered channel untuk pesan masuk |
+| `ENABLE_MULTIMODAL_AI` | Boolean | `true` | | Mengaktifkan/menonaktifkan analisis multimodal (gambar/media) oleh AI |
+| `MAX_MEDIA_SIZE_MB` | Integer | `5` | | Ukuran maksimum lampiran media (dalam MB) untuk diproses oleh AI |
 
 ---
 
